@@ -130,7 +130,7 @@ def check_arg(args):
 
     results.verbose = not results.noverbose
     results.dataset_root = '/kaggle/working/'  # Thay đường dẫn tới bộ dữ liệu của bạn
-    results.depth_root = '/kaggle/working/PPE-detection-1/train/'  # Đường dẫn tới depth map nếu có
+    results.depth_root = '/kaggle/working/eep-1/train'  # Đường dẫn tới depth map nếu có
 
     results.texture = '/kaggle/input/database-rainrender/env_light_database/size32'
     # Đảm bảo norm_coeff vẫn đúng đường dẫn
