@@ -129,8 +129,8 @@ def check_arg(args):
     assert not results.force_particles or results.conflict_strategy != "skip", "If particles simulator is forced, cannot skip"
 
     results.verbose = not results.noverbose
-    results.dataset_root = '/kaggle/input'  # Thay đường dẫn tới bộ dữ liệu của bạn
-    results.depth_root = ''  # Đường dẫn tới depth map nếu có
+    results.dataset_root = '/kaggle/working/ppe'  # Thay đường dẫn tới bộ dữ liệu của bạn
+    results.depth_root = '/kaggle/working/ppe/depth'  # Đường dẫn tới depth map nếu có
 
     results.texture = '/kaggle/input/database-rainrender/env_light_database/size32'
     # Đảm bảo norm_coeff vẫn đúng đường dẫn
