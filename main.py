@@ -132,6 +132,7 @@ def check_arg(args):
     results.texture = '/kaggle/input/database-rainrender/env_light_database/size32'
     # Đảm bảo norm_coeff vẫn đúng đường dẫn
     results.norm_coeff = '/kaggle/input/database-rainrender/env_light_database/txt/normalized_env_max.txt'
+    results.streaks_db = '/kaggle/input/database-rainrender'  # Đảm bảo rằng đường dẫn này đúng
 
     assert os.path.exists(results.streaks_db), ("rainstreakdb database is missing.", results.streaks_db)
     assert os.path.exists(results.texture), ("rainstreakdb database is not valid. Some files are missing.", results.texture)
