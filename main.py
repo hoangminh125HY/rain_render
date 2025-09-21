@@ -129,8 +129,9 @@ def check_arg(args):
     assert not results.force_particles or results.conflict_strategy != "skip", "If particles simulator is forced, cannot skip"
 
     results.verbose = not results.noverbose
-    results.texture = os.path.join(results.streaks_db, 'env_light_database','size32')
-    results.norm_coeff = os.path.join(results.streaks_db, 'env_light_database', 'txt', 'normalized_env_max.txt')
+    results.texture = '/kaggle/input/database-rainrender/env_light_database/size32'
+    # Đảm bảo norm_coeff vẫn đúng đường dẫn
+    results.norm_coeff = '/kaggle/input/database-rainrender/env_light_database/txt/normalized_env_max.txt'
 
     assert os.path.exists(results.streaks_db), ("rainstreakdb database is missing.", results.streaks_db)
     assert os.path.exists(results.texture), ("rainstreakdb database is not valid. Some files are missing.", results.texture)
