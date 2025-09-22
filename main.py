@@ -14,7 +14,7 @@ def check_arg(args):
     results = {}
 
     # Tách biệt tham số đường dẫn riêng biệt cho dataset
-    results['dataset'] = '/path/to/ppe'  # Đường dẫn đến thư mục chứa dataset 'ppe'
+    results['dataset'] = '/kaggle/working/ppe'  # Đường dẫn đến thư mục chứa dataset 'ppe'
     results['train_root'] = os.path.join(results['dataset'], 'train')  # Đường dẫn đến thư mục train
     results['val_root'] = os.path.join(results['dataset'], 'val')  # Đường dẫn đến thư mục val
     results['test_root'] = os.path.join(results['dataset'], 'test')  # Đường dẫn đến thư mục test
@@ -52,9 +52,9 @@ def check_arg(args):
     results['frames'] = []
 
     # Cập nhật các giá trị đường dẫn liên quan đến dataset
-    dataset_name = "rain100"  # Ví dụ dataset_name cố định, có thể thay đổi sau
+    dataset_name = "/kaggle/input/customdb"  # Ví dụ dataset_name cố định, có thể thay đổi sau
     results['dataset_root'] = os.path.join(results['dataset'], dataset_name)
-    results['depth_root'] = os.path.join(results['dataset'], 'depth', dataset_name)
+
 
     # Kiểm tra sự tồn tại của thư mục chứa ảnh
     results['images_root'] = os.path.join(results['dataset_root'])
