@@ -231,7 +231,7 @@ if __name__ == "__main__":
     generator = Generator(
     dataset_root=args.dataset_root,
     dataset=args.dataset,
-    output_dir=args.output_dir,
+    output_dir=args.output,
     rainstreakdb=args.rainstreakdb,
     rendering_strategy=args.rendering_strategy
 )
