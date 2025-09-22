@@ -26,7 +26,7 @@ def process(sim, force_recompute=False):
 
     def print_progress():
         global _sim_status
-        threads_active = [t for t in threads if t._started.is_set() and t.isAlive()]
+        threads_active = [t for t in threads if t._started.is_set() and t.is_alive()]
         status = " | ".join(["#{id}: {time:.2f}/{dur:.2f}s".format(id=t.id, time=t.simtime, dur=t.simdur) for t in threads_active])
         if status == _sim_status:
             return
@@ -55,18 +55,18 @@ def process(sim, force_recompute=False):
 
         # Wait for an available thread
         print("Wait for threads")
-        while np.sum([t.isAlive() for t in threads]) >= max_thread:
+        while np.sum([t.is_alive() for t in threads]) >= max_thread:
             time.sleep(2)
             print_progress()
 
-        thread_ended_mask = np.array([not t.isAlive() and t._started.is_set() for t in threads])
+        thread_ended_mask = np.array([not is_alive() and t._started.is_set() for t in threads])
         for t in threads[thread_ended_mask]:
             print("Thread ended: ", t.output_dir)
         threads = threads[~thread_ended_mask]
 
         # Wait for all threads if no remaining ones
         if np.sum(np.array([not t._started.is_set() for t in threads])) == 0:
-            while np.sum([t.isAlive() for t in threads]) != 0:
+            while np.sum([t.is_alive() for t in threads]) != 0:
                 time.sleep(2)
                 print_progress()
 
