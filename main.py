@@ -165,11 +165,11 @@ def check_arg(args):
     print(" {} sequences found: {}".format(len(results.sequences), [s for s in results.sequences]))
     for seq in results.sequences:
         valid = True
-        if not os.path.exists(results.images[seq]):
-            print(" Skip sequence '{}': images folder is missing {}".format(seq, results.images[seq]))
+        if not os.path.exists(os.path.join(results.images_root, seq)):  # Kiểm tra ảnh RGB đúng thư mục
+            print(" Skip sequence '{}': images folder is missing {}".format(seq, os.path.join(results.images_root, seq)))
             valid = False
-        if not os.path.exists(results.depth[seq]):
-            print(" Skip sequence '{}': depth folder is missing {}".format(seq, results.depth[seq]))
+        if not os.path.exists(os.path.join(results.depth_root, seq)):  # Kiểm tra ảnh Depth đúng thư mục
+            print(" Skip sequence '{}': depth folder is missing {}".format(seq, os.path.join(results.depth_root, seq)))
             valid = False
         if results.calib[seq] is not None and not np.all([os.path.exists(f) for f in results.calib[seq]] if isinstance(results.calib[seq], list) else os.path.exists(results.calib[seq])):
             print(" Skip sequence '{}': calib data is missing {}".format(seq, results.calib[seq]))
