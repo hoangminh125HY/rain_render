@@ -202,11 +202,10 @@ def check_arg(args):
     if len(sims_to_run) == 0:
         print(" All particles simulations ready")
     else:
-        print(" {} particles simulations to compute... Simulations will attempt to run automatically using weather particle simulator".format(len(sims_to_run)))
-        for sim in sims_to_run:
-            import tools.particles_simulation
-            tools.particles_simulation.process(sim, force_recompute=True)  # Current script already decided it has to be re-run
-        print(" All particles simulation completed")
+        print(" {} particles simulations to compute...".format(len(sims_to_run)))
+        print(" [Skipped] Kaggle environment cannot run weather particle simulator.")
+        # Bỏ qua không gọi tools.particles_simulation
+
 
     # Resolve particle simulation files path
     particles2 = {}
