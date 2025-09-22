@@ -198,23 +198,7 @@ class Generator:
         # case for any number of sequences and supported rain intensities
         for folder_idx, sequence in enumerate(self.sequences):
             folder_t0 = time.time()
-            print(f'\nSequence: {sequence}')
-                    
-            # Kiểm tra xem sequence có trong self.particles hay không
-            if sequence not in self.particles:
-                print(f"Error: No particles data found for sequence '{sequence}'")
-                continue  # Bỏ qua sequence này nếu không có dữ liệu particles
-
-            # Kiểm tra ảnh RGB và Depth có đúng không
-            if sequence not in self.images:
-                print(f"Error: No RGB images found for sequence '{sequence}'")
-                continue
-
-            if sequence not in self.depth:
-                print(f"Error: No Depth images found for sequence '{sequence}'")
-                continue
-
-            # Lấy số lượng mô phỏng cho sequence này
+            print('\nSequence: ' + sequence)
             sim_num = len(self.particles[sequence])
             depth_folder = self.depth[sequence]
 
@@ -248,29 +232,248 @@ class Generator:
                 fog_params = {"rain_intensity": fallrate, "focal": self.focal, "f_number": self.f_number, "angle": 90,
                               "exposure": self.exposure, "camera_gain": self.camera_gain}
 
-                files = natsorted(np.array([os.path.join(self.images[sequence], picture) for picture in my_utils.os_listdir(self.images[sequence])]))
-                depth_files = natsorted(np.array([os.path.join(depth_folder, depth) for depth in my_utils.os_listdir(depth_folder)]))
+                if "nuscenes" in self.dataset:
+                    files = self.images[sequence]
+                    depth_files = self.depth[sequence]
+                    depth_file = depth_files[0]
+                    assert depth_file.endswith(".jpg"), "nuscenes processing only works with .npy for depth"
+                    # depth = np.load(depth_file)
+                    if "gan" in self.dataset:
+                        # HARDCODED since these values are not known in nuscenes_gan
+                        imW, imH = (1600, 900)
+                    else:
+                        img = cv2.imread(files[0])
+                        imH, imW = img.shape[0:2]
+                else:
+                    files = natsorted(np.array([os.path.join(self.images[sequence], picture) for picture in my_utils.os_listdir(self.images[sequence])]))
+                    depth_files = natsorted(np.array([os.path.join(depth_folder, depth) for depth in my_utils.os_listdir(depth_folder)]))
+                    im = files[0]
+                    if im.endswith(".png"):
+                        imH, imW = cv2.imread(im).shape[0:2]
+                    elif im.endswith(".jpg"):
+                        imH, imW = np.load(im).shape[0:2]
+                    else:
+                        raise Exception("Invalid extension", im)
+                    imH = imH//self.settings["render_scale"]
+                    imW = imW//self.settings["render_scale"]
 
-                # Ensure only .jpg files are considered
-                files = [f for f in files if f.endswith('.jpg')]
-                depth_files = [f for f in depth_files if f.endswith('.jpg')]
+                if self.camera_gain:
+                    fog_params["camera_gain"] = self.camera_gain
 
-                if len(files) != len(depth_files):
-                    print(f"Warning: The number of RGB files and Depth files for sequence {sequence} does not match.")
-                    continue
+                print('Simulation: rain {}mm/hr'.format(fallrate))
+                # loading StreaksDBManager, RainRenderer, FOVComputation and EnvMapGenerator
+                self.db = DBManager(streaks_path_xml=sim_file, streaks_path=self.texture,
+                                    norm_coeff_path=self.norm_coeff)
+                self.renderer = RainRenderer(focal=self.focal, f_number=self.f_number, focus_plane=6, radius=10, fov=165)
+                self.fov_comp = FovComputation(camera=np.array([0, 0, 0]))
+                map_generator = EnvironmentMapGenerator(self.focal, imW, imH)
 
-                for idx, (rgb_file, depth_file) in enumerate(zip(files, depth_files)):
-                    rgb_path = os.path.join(self.images[sequence], rgb_file)
-                    depth_path = os.path.join(self.depth[sequence], depth_file)
+                # loading fog class
+                FOG = add_attenuation.FogRain(**fog_params)
 
-                    # Read images
-                    rgb_image = cv2.imread(rgb_path)
-                    depth_image = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+                # loading calib files for frames
+                calib_files = self.calib[sequence]
 
-                    if rgb_image is None or depth_image is None:
-                        print(f"Error reading images {rgb_path} or {depth_path}. Skipping...")
-                        continue
+                # loading streaks from Streaks Database
+                self.db.load_streak_database()
 
-                    # Process the images as per your simulation code
-                    # Add your processing code here...
+                # creating drops based on the simulator file
+                self.db.load_streaks_from_xml(self.dataset, self.settings, [imW, imH], use_pickle=False, verbose=self.verbose)
+
+                env_map_input = self.env_type if self.irrad_type == 'garg' else self.env_type + '_' + self.irrad_type
+
+                frame_render_dict = list(self.db.streaks_simulator.values())
+
+                f_start, f_end, f_step = self.frame_start, self.frame_end, self.frame_step
+                f_end = len(files) if f_end is None else min(f_end, len(files))
+                if self.frames:
+                    # prone to go "boom", so we clip and remove 'wrong' ids
+                    idx = np.unique(np.clip(self.frames, 0, f_end - 1)).tolist()
+                else:
+                    idx = list(range(f_start, f_end, f_step))  # to make it
+
+                f_num = len(idx)
+                sim_t0 = time.time()
+                print("{} images".format(len(idx)))
+                frames_exist_nb = 0
+                for f_idx, i in enumerate(idx):
+                    image_file = files[i]
+                    depth_file = depth_files[i]
+
+                    # Compute frame index (independent of starting frame) to allow deterministic / reproducible rendering
+                    if self.dataset == 'nuscenes':
+                        # It could be useful for other dataset, but, for the moment, lets consign this little gem of a
+                        # code to nuscenes
+                        # If f_end was not supplied, we could see if the number of file is not equal to the number of
+                        # simulated drop... if so, lets remap them
+                        render_ix = np.linspace(0, len(frame_render_dict), len(files), endpoint=False, dtype=int)
+                        f_name_idx = render_ix[i]
+                    else:
+                        f_name_idx = i
+
+                    assert os.path.exists(image_file), "Image file {} does not exist".format(image_file)
+                    assert os.path.exists(depth_file), "Depth file {} does not exist".format(depth_file)
+
+                    # Ensure deterministic behavior
+                    np.random.seed(f_name_idx)
+
+                    frame_t0 = time.time()
+                    frame = frame_render_dict[f_name_idx % len(frame_render_dict)]
+                    file_name = os.path.split(image_file)[-1]
+
+                    out_rainy_path = os.path.join(out_dir, 'rainy_image', '{}.png'.format(file_name[:-4]))
+                    out_rainy_mask_path = os.path.join(out_dir, 'rain_mask', '{}.png'.format(file_name[:-4]))
+                    out_env_path = os.path.join(out_seq_dir, 'envmap', '{}.png'.format(file_name[:-4]))
+
+                    frame_exists = os.path.exists(out_rainy_path) or os.path.exists(out_rainy_mask_path)
+                    if frame_exists:
+                        if self.conflict_strategy == "skip":
+                            frames_exist_nb += 1
+                            continue
+                        elif self.conflict_strategy == "overwrite":
+                            pass
+                        else:
+                            raise NotImplementedError
+
+                    # TODO adding functions of depth weighting for other dataset
+                    if USE_DEPTH_WEIGHTING == 1 and calib_files is not None:
+                        # Compute the drop depth map to allow weighting envmap from drop FOV
+                        depth_drop_evaluator = DropDepthMap(filename=calib_files[0])
+
+                    # flush should happens after a while
+                    if self.verbose:
+                        sys.stdout.write(
+                            '\r' + my_utils.process_eta_str(process_t0, folder_idx, folders_num, folder_t0, sim_idx,
+                                                            sim_num, sim_t0, f_idx,
+                                                            f_num, frame_t0) + '                        ')
+
+                    # two copies of bg because one is used for rain drop calculation
+                    # and the other is changed after adding each drop
+                    bg = cv2.imread(image_file) / 255.0
+
+                    if self.settings["render_scale"] != 1:
+                        bg = cv2.resize(bg, (int(bg.shape[1]//self.settings["render_scale"]), int(bg.shape[0]//self.settings["render_scale"])))
+
+                    if FOG_ATT == 1:
+                        # Depth map is used in weighting the luminance effect of the environment map on a single drop
+                        if depth_file.endswith(".png"):
+                            depth = cv2.imread(depth_file, cv2.IMREAD_UNCHANGED)
+                            if depth is None:
+                                print('Missing/Corrupted depth data (%s)' % depth_file)
+                                continue
+
+                            depth = depth.astype(np.float32) / 256.
+                        elif depth_file.endswith(".npy"):
+                            depth = np.load(depth_file)
+                        else:
+                            raise Exception("Invalid extension")
+
+                        # Apply depth and render scale
+                        depthHW = np.array([int((depth.shape[0] * self.settings["depth_scale"]) // self.settings["render_scale"]), int((depth.shape[1] * self.settings["depth_scale"]) // self.settings["render_scale"])])
+                        if not np.all(depth.shape[:2] == depthHW):
+                            depth = cv2.resize(depth, (depthHW[1], depthHW[0]))
+
+                        assert (np.all(depth.shape[:2] <= bg.shape[:2])), "Depth cannot be larger than the image"
+
+                        # Strategy to apply if RGB and Depth size mismatch
+                        if not np.all(depth.shape[:2] == bg.shape[:2]):
+                            # print("\nDepth {} size ({},{}) differs from image ({},{}). Will assume depth is crop centered.".format(image_file, depth.shape[0], depth.shape[1], bg.shape[0], bg.shape[1]))
+                            bg = my_utils.crop_center(bg, depth.shape[0], depth.shape[1])
+                    else:
+                        # In that case, no need for depth, but it's still used down in the code, for more less nothing
+                        depth = np.zeros((bg.shape[1], bg.shape[0]), np.float)
+
+                    rainy_bg = FOG.fog_rain_layer(bg, depth)
+
+                    # rain layer is the image of the rendered rain drops blended with the background
+                    rain_layer = np.zeros((bg.shape[0], bg.shape[1], 4), np.float64)
+
+                    # rainy_mask keeps track of the pixels of the background that have already been occupied by rain.
+                    # This is used in cases of occluding or partially occluded drops
+                    rainy_mask = np.zeros((bg.shape[0], bg.shape[1]), np.float64)
+                    rainy_saturation_mask = np.zeros((bg.shape[0], bg.shape[1], 3), np.float64)
+
+                    # Environment map of the frame using (Christopher Cameron, 2005):
+                    # http://www.cs.cmu.edu/afs/andrew/scs/cs/15-463/f05/pub/www/projects/fproj/cmcamero/report.pdf
+                    if 'ours' in env_map_input:
+                        # print('\nGenerating environment map')
+                        self.BGR_env_map = map_generator.generate_map(rainy_bg)
+                    elif 'pano' in env_map_input:
+                        # print('\nLoading Environment Pano')
+                        self.BGR_env_map = cv2.imread(os.path.join('../data', 'panos', file_name)) / 255.0
+                    else:
+                        raise NotImplementedError
+
+                    self.env_map_xyY = my_utils.convert_rgb_to_xyY(self.BGR_env_map[..., ::-1])
+                    self.env_map_xyY[np.isnan(self.env_map_xyY)] = 0
+
+                    self.solid_angle_map = solid_angle.get_solid_angles(self.BGR_env_map)
+
+                    # Render only streaks inside the frame
+                    streak_dict = frame.streaks
+                    streak_dict = {keys: values for keys, values in streak_dict.items() if
+                                   1 <= values.max_width < max(imH, imW) and
+                                   1 <= values.length < max(imH, imW) and
+                                   ((0 <= values.image_position_start[0] < imW
+                                     and 0 <= values.image_position_start[1] < imH) or
+                                    (0 <= values.image_position_end[0] < imW
+                                     and 0 <= values.image_position_end[1] < imH))}
+
+                    if USE_DEPTH_WEIGHTING == 1:
+                        xyz_coord = depth_drop_evaluator.get_world_points(depth)
+
+                    assert streak_dict.__len__() <= 2 ** 16, \
+                        "Assert that the number of drops doesn't overpass the uint16 rain_mask capacity"
+
+                    streak_list = list(streak_dict.values())
+                    drop_num = len(streak_list)
+                    drop_process_t0 = time.time()
+                    for drop_idx, drop_dict in enumerate(streak_list):
+                        # Returns the rainy image, rainy_mask, drop, blended drop and the starting coord of
+                        # the drop in image
+                        rainy_bg, rainy_mask, rainy_saturation_mask, \
+                        drop, blended_drop, minC = self.compute_drop(bg, drop_dict, rainy_bg,
+                                                                     rainy_mask, rainy_saturation_mask)
+                        if blended_drop is not None:
+                            rain_layer = self.renderer.make_rain_layer(drop, blended_drop, rain_layer, rainy_mask, minC)
+                        else:
+                            print("Trace: rain drop {} in sequence {} in image {} ({})".format(drop_idx,
+                                                                                               sequence, f_idx,
+                                                                                               f_name_idx))
+
+                        # Compute progress
+                        avg_drop_time = (time.time() - drop_process_t0) / (drop_idx + 1)
+                        if self.verbose or drop_idx == 0:
+                            sys.stdout.write(
+                                '\r' + my_utils.process_eta_str(process_t0, folder_idx, folders_num, folder_t0, sim_idx,
+                                                                sim_num,
+                                                                sim_t0, f_idx, f_num, frame_t0, drop_idx,
+                                                                drop_num) + '\t\t' + '%.1fms /drop' % (
+                                        1000. * avg_drop_time) + '       ')
+
+                    # Create all output directories
+                    os.makedirs(os.path.dirname(out_rainy_path), exist_ok=True)
+                    os.makedirs(os.path.dirname(out_rainy_mask_path), exist_ok=True)
+                    if self.save_envmap:
+                        os.makedirs(os.path.dirname(out_env_path), exist_ok=True)
+
+                    # mean contrast adjusted image
+                    rainy_bg_mean = np.mean(rainy_bg)
+                    bg_mean = np.mean(bg)
+                    difference_mean = rainy_bg_mean - bg_mean
+                    rainy_bg_copy = rainy_bg - difference_mean
+
+                    plt.imsave(out_rainy_path, np.clip(rainy_bg_copy[..., ::-1], 0, 1))
+                    plt.imsave(out_rainy_mask_path, rainy_mask)
+                    if self.save_envmap:
+                        plt.imsave(out_env_path, self.BGR_env_map[..., ::-1])
+                if frames_exist_nb > 0:
+                    print("Skipped {}/{} already existing renderings".format(frames_exist_nb, len(idx)))
+
+            print("\n\nEnd of the simulation")
+
+
+
+
+
 
