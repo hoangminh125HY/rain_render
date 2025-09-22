@@ -59,7 +59,7 @@ def process(sim, force_recompute=False):
             time.sleep(2)
             print_progress()
 
-        thread_ended_mask = np.array([not is_alive() and t._started.is_set() for t in threads])
+        thread_ended_mask = np.array([not t.is_alive() and t._started.is_set() for t in threads])
         for t in threads[thread_ended_mask]:
             print("Thread ended: ", t.output_dir)
         threads = threads[~thread_ended_mask]
