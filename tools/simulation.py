@@ -36,7 +36,7 @@ stats_start_time = 5.0  # Stats starting time (s)
 
 class WeatherSimulation(threading.Thread):
     def __init__(self, id, path, options, weather, redo=False, deactivate_window_mode=True,
-                 bin_folder=os.path.join(os.getcwd(), "3rdparty", "weather-particle-simulator", "{}_{}".format(bin_platform, bin_bitness))):
+                 bin_folder=os.path.join(os.getcwd(), "weather-particle-simulator", "{}_{}".format(bin_platform, bin_bitness))):
         threading.Thread.__init__(self)
 
         self.id = id
