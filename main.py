@@ -123,7 +123,9 @@ def check_arg(args):
     parser.add_argument('--force_particles',
                         help='Force particles simulator to run even if simulation exist',
                         action='store_true')
-
+    parser.add_argument('--rainstreakdb',
+                        help='Path to rain streaks database',
+                        type=str, required=True)
     results = parser.parse_args(args)
 
     assert not results.force_particles or results.conflict_strategy != "skip", "If particles simulator is forced, cannot skip"
@@ -226,5 +228,11 @@ if __name__ == "__main__":
     args = check_arg(sys.argv[1:])
 
     print("\nRunning renderers...")
-    generator = Generator(args)
+    generator = Generator(
+    dataset_root=args.dataset_root,
+    dataset=args.dataset,
+    output_dir=args.output_dir,
+    rainstreakdb=args.rainstreakdb,
+    rendering_strategy=args.rendering_strategy
+)
     generator.run()
