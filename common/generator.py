@@ -199,7 +199,8 @@ class Generator:
         for folder_idx, sequence in enumerate(self.sequences):
             folder_t0 = time.time()
             print('\nSequence: ' + sequence)
-            sim_num = len(self.particles[sequence])
+            if self.rendering_strategy != "naive_db":
+                sim_num = len(self.particles[sequence])
             depth_folder = self.depth[sequence]
 
             for sim_idx, sim_weather in enumerate(self.weather):
